@@ -1,5 +1,5 @@
 # SmileClaw
-Rewrite a mini OpenClaw 
+Learn to Rewrite a mini OpenClaw LLM agent.
 ## USAGE
 Create a.env file in the root directory and then add your own key
 ```
