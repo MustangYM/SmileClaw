@@ -12,3 +12,4 @@ DEEPSEEK_API_KEY=skxxxxxxxxxxx
 or
 OPENAI_API_KEY=sk-proj-xxxxxxxx
 ```
+F5 to run
