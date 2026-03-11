@@ -1,0 +1,19 @@
+gateway:
+  request_timeout: 30s
+  session_ttl_dm: 24h
+  session_ttl_group: 8h
+  approval_wait_timeout: 24h
+
+channels:
+  telegram:
+    enabled: true
+    bot_token: ${TELEGRAM_BOT_TOKEN}
+    dm_policy: pairing
+  discord:
+    enabled: false
+    bot_token: ""
+    dm_policy: pairing
+  feishu:
+    enabled: false
+    bot_token: ""
+    dm_policy: pairing

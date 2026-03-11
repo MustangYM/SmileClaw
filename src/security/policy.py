@@ -19,6 +19,22 @@ class ShellPolicyEngine:
 
     def __init__(self, workspace_root):
         self.workspace_root = Path(workspace_root).resolve()
+        self.unknown_home_root = Path("/__smileclaw_unknown_home__")
+
+    def _safe_home_path(self):
+        try:
+            return Path.home()
+        except RuntimeError:
+            return self.unknown_home_root
+
+    def _expand_user_token(self, token: str):
+        try:
+            return Path(token).expanduser()
+        except RuntimeError:
+            suffix = token[1:].lstrip("/")
+            if not suffix:
+                return self.unknown_home_root
+            return self.unknown_home_root / suffix
 
     def _parse(self, command):
         try:
@@ -49,7 +65,7 @@ class ShellPolicyEngine:
 
             if token == "cd":
                 if idx + 1 >= len(tokens):
-                    raw_target = str(Path.home())
+                    raw_target = str(self._safe_home_path())
                 else:
                     raw_target = tokens[idx + 1]
 
@@ -58,7 +74,7 @@ class ShellPolicyEngine:
                     continue
 
                 if raw_target.startswith("~"):
-                    candidate = Path(raw_target).expanduser().resolve(strict=False)
+                    candidate = self._expand_user_token(raw_target).resolve(strict=False)
                 elif raw_target.startswith("/"):
                     candidate = Path(raw_target).resolve(strict=False)
                 else:
@@ -71,7 +87,7 @@ class ShellPolicyEngine:
                 continue
 
             if token.startswith("~"):
-                candidate = Path(token).expanduser().resolve(strict=False)
+                candidate = self._expand_user_token(token).resolve(strict=False)
                 normalized_paths.append(str(candidate))
             elif token.startswith("/"):
                 normalized_paths.append(str(Path(token).resolve(strict=False)))

@@ -4,6 +4,7 @@ import uuid
 from pathlib import Path
 
 from agent.events import RuntimeEventEmitter
+from agent.file_retriever import run_internal_file_search
 from llm.llm import ask_llm
 from tools.registry import execute_tool
 from security.approval import ApprovalManager
@@ -58,6 +59,7 @@ class Agent:
         self.denied_commands_in_turn = set()
         self.user_turn_count = 0
         self.last_completion_emitted = False
+        self.last_internal_retriever_turn = 0
 
     def has_pending_approval(self):
         return self.pending_approval_id is not None
@@ -100,6 +102,57 @@ class Agent:
             self.denied_commands_in_turn.clear()
             self.events.start_run()
             self.last_completion_emitted = False
+            self.last_internal_retriever_turn = 0
+
+    def _latest_user_message(self, messages):
+        for item in reversed(messages):
+            if item.get("role") == "user":
+                return item.get("content", "")
+        return ""
+
+    def _handle_internal_file_search_if_needed(self, messages):
+        if self.user_turn_count <= 0:
+            return False
+        if self.last_internal_retriever_turn == self.user_turn_count:
+            return False
+
+        user_text = self._latest_user_message(messages)
+        result = run_internal_file_search(
+            user_text=user_text,
+            ask_llm_func=ask_llm,
+            execute_tool_func=execute_tool,
+            approvals=self.approvals,
+            log_func=print,
+        )
+
+        if not result.get("handled"):
+            return False
+
+        self.last_internal_retriever_turn = self.user_turn_count
+
+        if result.get("status") == "approval_required":
+            self.pending_approval_id = result.get("approval_id")
+            message = result.get("message") or "检测到目录访问风险，等待审批。"
+            self.memory.add("assistant", message)
+            print("LLM:", message)
+            self.events.emit(
+                "approval_requested",
+                {
+                    "approval_id": self.pending_approval_id,
+                    "tool_name": "shell",
+                    "reason": "restricted_paths",
+                    "restricted_paths": result.get("paths", []),
+                },
+                correlation_id=self.pending_approval_id or str(uuid.uuid4())[:8]
+            )
+            return True
+
+        reply = result.get("message", "")
+        if reply:
+            self.memory.add("assistant", reply)
+            print("LLM:", reply)
+            self.events.emit("assistant_message", {"text": reply})
+        return True
 
     def _format_tool_result(self, result):
         if isinstance(result, dict):
@@ -219,6 +272,10 @@ class Agent:
 
             messages = self.memory.get()
             self._sync_turn_state(messages)
+            if self._handle_internal_file_search_if_needed(messages):
+                if self.pending_approval_id:
+                    print("LLM: 当前存在待审批操作，等待用户决策。")
+                break
             print("准备调用LLM Messages:", messages)
 
             reply = ask_llm(messages)

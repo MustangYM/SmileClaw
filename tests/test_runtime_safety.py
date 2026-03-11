@@ -34,9 +34,18 @@ if "dotenv" not in sys.modules:
 from agent.agent import Agent  # noqa: E402
 from memory.memory import Memory  # noqa: E402
 from security.approval import ApprovalManager  # noqa: E402
+from security.policy import ShellPolicyEngine  # noqa: E402
 
 
 class RuntimeSafetyTests(unittest.TestCase):
+
+    def setUp(self):
+        self._load_policy_patcher = patch("security.approval.ApprovalManager._load_policy", return_value=None)
+        self._save_policy_patcher = patch("security.approval.ApprovalManager._save_policy", return_value=None)
+        self._load_policy_patcher.start()
+        self._save_policy_patcher.start()
+        self.addCleanup(self._load_policy_patcher.stop)
+        self.addCleanup(self._save_policy_patcher.stop)
 
     def test_cd_traversal_requires_approval(self):
         manager = ApprovalManager(PROJECT_ROOT)
@@ -79,6 +88,37 @@ class RuntimeSafetyTests(unittest.TestCase):
             any("不再重复申请权限" in text for text in assistant_contents),
             "Expected denied-loop protection message not found."
         )
+
+    def test_expanduser_runtime_error_fallback(self):
+        engine = ShellPolicyEngine(PROJECT_ROOT)
+        with patch("pathlib.Path.expanduser", side_effect=RuntimeError("Could not determine home directory.")):
+            result = engine.evaluate(
+                command="cat ~/secret.txt",
+                allowed_roots=[str(PROJECT_ROOT)],
+                denied_commands=set(),
+            )
+        self.assertEqual(result["decision"], "require_approval")
+        self.assertIn("OUTSIDE_WORKSPACE", result["reason_codes"])
+
+    def test_agent_uses_internal_retriever_reply(self):
+        memory = Memory()
+        memory.add("user", "在文稿里找一份简历")
+        agent = Agent(memory)
+
+        with patch(
+            "agent.agent.run_internal_file_search",
+            return_value={
+                "handled": True,
+                "status": "found",
+                "message": "我找到这些可能相关的文件：\\n1. /Users/test/Documents/resume.pdf",
+            },
+        ), patch("agent.agent.ask_llm", side_effect=AssertionError("ask_llm should not be called")):
+            agent.run()
+
+        assistant_contents = [
+            item["content"] for item in memory.get() if item["role"] == "assistant"
+        ]
+        self.assertTrue(any("我找到这些可能相关的文件" in text for text in assistant_contents))
 
 
 if __name__ == "__main__":

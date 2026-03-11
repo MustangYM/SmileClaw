@@ -66,6 +66,16 @@ def _truncate_text(text):
     return truncated, True
 
 
+def _decode_output(data):
+    if data is None:
+        return ""
+    if isinstance(data, str):
+        return data
+    if isinstance(data, bytes):
+        return data.decode("utf-8", errors="replace")
+    return str(data)
+
+
 def run(command):
     if len(command) > MAX_COMMAND_LENGTH:
         return {
@@ -90,16 +100,16 @@ def run(command):
             command,
             shell=True,
             capture_output=True,
-            text=True,
+            text=False,
             timeout=COMMAND_TIMEOUT_SECONDS
         )
-        raw_stdout = result.stdout or ""
-        raw_stderr = result.stderr or ""
+        raw_stdout = _decode_output(result.stdout)
+        raw_stderr = _decode_output(result.stderr)
         exit_code = result.returncode
     except subprocess.TimeoutExpired as exc:
         timeout_hit = True
-        raw_stdout = exc.stdout or ""
-        raw_stderr = (exc.stderr or "") + "\nCommand timed out."
+        raw_stdout = _decode_output(exc.stdout)
+        raw_stderr = _decode_output(exc.stderr) + "\nCommand timed out."
         exit_code = -1
         error_code = "TIMEOUT"
 
