@@ -21,3 +21,6 @@ env/
 
 # OS
 .DS_Store
+
+# Runtime approvals
+.smileclaw/

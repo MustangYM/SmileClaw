@@ -19,6 +19,11 @@ If a tool is needed, return JSON:
  "args": {{ ... }}
 }}
 
+If you call a tool:
+- output JSON only
+- do not use markdown code fence
+- do not add explanation before or after JSON
+
 Otherwise reply normally.
 """
 
